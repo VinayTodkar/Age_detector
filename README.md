@@ -20,7 +20,7 @@ Ensure you have Python installed. Then install the required libraries:
 ```bash
 pip install flask opencv-python numpy scikit-learn pandas joblib
 
-⚙️ Installation & Setup
+##  Installation & Setup
 Clone the repository:
 git clone https://github.com/VinayTodkar/Age_detector.git
 cd Age_detector
@@ -36,7 +36,7 @@ Invoke-WebRequest -Uri "https://github.com/spmallick/learnopencv/raw/master/AgeG
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/GilLevi/AgeGenderDeepLearning/master/models/age_deploy.prototxt" -OutFile "age_deploy.prototxt"
 Invoke-WebRequest -Uri "https://github.com/GilLevi/AgeGenderDeepLearning/raw/master/models/age_net.caffemodel" -OutFile "age_net.caffemodel"
 
-Run the Application:
+## Run the Application:
 python app.py
 
 Open in Browser: Navigate to http://127.0.0.1:5000 in your web browser.

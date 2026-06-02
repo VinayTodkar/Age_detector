@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Age Detector with Feedback</title>
+    <style>
+        :root { --primary: #4f46e5; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --bg: #f3f4f6; --card: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: #1f2937; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 900px; width: 100%; background: var(--card); padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: var(--primary); margin-bottom: 20px; }
+        
+        .upload-area { border: 2px dashed #cbd5e1; padding: 30px; border-radius: 8px; cursor: pointer; margin-bottom: 20px; position: relative; }
+        .upload-area:hover { border-color: var(--primary); background: #eef2ff; }
+        .upload-area input { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+        
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 5px; }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        .btn-train { background: var(--warning); color: #000; }
+
+        .results-container { display: none; margin-top: 30px; text-align: left; }
+        .image-preview { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 1.8em; font-weight: bold; color: var(--primary); }
+        .stat-label { font-size: 0.9em; color: #64748b; margin-bottom: 10px; }
+        
+        .feedback-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; }
+        .feedback-btn { padding: 6px 12px; font-size: 0.85em; margin: 2px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 4px; }
+        .feedback-btn:hover { background: #e2e8f0; }
+        .feedback-btn.selected { background: var(--success); color: white; border-color: var(--success); }
+
+        .loader { display: none; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: white; padding: 10px 20px; border-radius: 5px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🧠 Smart Age Detector</h1>
+    <p style="font-size: 0.9em; color: #666;">Upload an image. If the age is wrong, tell us! The model will learn.</p>
+    
+    <div class="upload-area" id="drop-zone">
+        <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg">
+        <p id="upload-text">Drag & Drop or <strong>Click to Upload</strong></p>
+    </div>
+
+    <button id="predict-btn" class="btn" disabled>Analyze Age</button>
+    <div class="loader" id="loader"></div>
+
+    <div class="results-container" id="results">
+        <h3>Analysis Result</h3>
+        <img id="result-image" class="image-preview" alt="Processed Image">
+        
+        <div id="stats-container" class="stats-grid"></div>
+    </div>
+</div>
+
+<div id="toast" class="toast">Feedback Saved!</div>
+
+<script>
+    const fileInput = document.getElementById('file-input');
+    const predictBtn = document.getElementById('predict-btn');
+    const resultsDiv = document.getElementById('results');
+    const resultImage = document.getElementById('result-image');
+    const statsContainer = document.getElementById('stats-container');
+    const loader = document.getElementById('loader');
+    const toast = document.getElementById('toast');
+    
+    let selectedFile = null;
+    let currentPredictions = [];
+
+    fileInput.addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            selectedFile = e.target.files[0];
+            document.getElementById('upload-text').innerText = `Selected: ${selectedFile.name}`;
+            predictBtn.disabled = false;
+            resultsDiv.style.display = 'none';
+        }
+    });
+
+    predictBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        predictBtn.disabled = true;
+        loader.style.display = 'block';
+        resultsDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/predict', { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (data.error) { alert('Error: ' + data.error); } 
+            else {
+                resultImage.src = data.image;
+                currentPredictions = data.predictions;
+                renderStats(data.predictions);
+                resultsDiv.style.display = 'block';
+            }
+        } catch (error) { console.error(error); alert('Failed to process.'); } 
+        finally {
+            predictBtn.disabled = false;
+            loader.style.display = 'none';
+        }
+    });
+
+    function renderStats(predictions) {
+        statsContainer.innerHTML = '';
+        if (predictions.length === 0) {
+            statsContainer.innerHTML = '<p>No faces detected.</p>';
+            return;
+        }
+
+        predictions.forEach((pred, index) => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            
+            // Feedback Buttons Logic
+            const feedbackHtml = `
+                <div class="feedback-section">
+                    <div style="font-size:0.8em; margin-bottom:5px;">Is this correct?</div>
+                    <button class="feedback-btn" onclick="submitFeedback(${index}, 'correct')">Correct</button>
+                    <button class="feedback-btn" onclick="submitFeedback(${index}, 'greater')">Slightly Greater</button>
+                    <button class="feedback-btn" onclick="submitFeedback(${index}, 'less')">Slightly Less</button>
+                    <button class="feedback-btn" onclick="submitFeedback(${index}, 'wrong')">Completely Wrong</button>
+                </div>
+            `;
+
+            card.innerHTML = `
+                <div class="stat-label">Face #${index + 1}</div>
+                <div class="stat-value">${pred.age}</div>
+                <div style="font-size:0.8em; color:#666;">Base Model: ${pred.base_label}</div>
+                <div style="font-size:0.8em; color:var(--success);">Confidence: ${pred.confidence}</div>
+                ${feedbackHtml}
+            `;
+            statsContainer.appendChild(card);
+        });
+    }
+
+    async function submitFeedback(index, type) {
+        const pred = currentPredictions[index];
+        let actualAge = pred.midpoint; // Default to predicted
+
+        // Simple logic to estimate actual age based on button click
+        if (type === 'correct') actualAge = pred.midpoint;
+        else if (type === 'greater') actualAge = pred.midpoint + 5;
+        else if (type === 'less') actualAge = pred.midpoint - 5;
+        else if (type === 'wrong') {
+            // For "Completely Wrong", in a real app, open a prompt. Here we assume a large shift or skip.
+            // To keep it simple for this demo, we will ask the user via prompt
+            const userAge = prompt("Please enter the correct age:", "");
+            if (userAge === null || userAge === "") return;
+            actualAge = parseInt(userAge);
+        }
+
+        // Visual feedback
+        const btns = event.target.parentElement.querySelectorAll('.feedback-btn');
+        btns.forEach(b => b.classList.remove('selected'));
+        event.target.classList.add('selected');
+
+        // Send to backend
+        const payload = {
+            predicted_midpoint: pred.midpoint,
+            confidence: parseFloat(pred.confidence),
+            actual_age: actualAge
+        };
+
+        try {
+            const res = await fetch('/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            
+            showToast(type === 'correct' ? "Thanks! Model updated." : "Feedback saved! Model will retrain.");
+            if(data.retrained) showToast("Model Retrained Successfully! 🚀");
+        } catch (e) { console.error(e); }
+    }
+
+    function showToast(msg) {
+        toast.innerText = msg;
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 3000);
+    }
+</script>
+
+</body>
+</html>   
